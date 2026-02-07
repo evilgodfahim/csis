@@ -2,13 +2,24 @@ name: Update CSIS RSS
 
 on:
   schedule:
-    # runs hourly (GitHub uses UTC)
-    - cron:  '0 * * * *'
-  workflow_dispatch: # allow manual trigger
+    - cron: '0 * * * *'
+  workflow_dispatch:
 
 jobs:
   build-and-commit:
     runs-on: ubuntu-latest
+
+    services:
+      flaresolverr:
+        image: ghcr.io/flaresolverr/flaresolverr:latest
+        ports:
+          - 8191:8191
+        options: >-
+          --health-cmd="curl -f http://localhost:8191/ || exit 1"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=12
+
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
@@ -19,6 +30,16 @@ jobs:
         uses: actions/setup-python@v4
         with:
           python-version: "3.11"
+
+      - name: Wait for FlareSolverr
+        run: |
+          for i in {1..30}; do
+            if curl -sSf http://localhost:8191/ >/dev/null 2>&1; then
+              echo "FlareSolverr ready"
+              break
+            fi
+            sleep 2
+          done
 
       - name: Install deps
         run: |
@@ -46,6 +67,4 @@ jobs:
             echo "No changes to commit."
           fi
         env:
-          # GITHUB_TOKEN is provided automatically; actions/checkout@v4 supports it by default,
-          # but we include it in env for clarity if pushing via HTTPS is required.
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
